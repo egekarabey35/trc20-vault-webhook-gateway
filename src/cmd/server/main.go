@@ -153,7 +153,7 @@ func (s *GatewayServer) webhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	key := "tx:" + payload.TxHash
 
-	acquired, err := s.redisClient.SetNX(ctx, key, "PENDING", 30*time.Second).Result()
+	acquired, err := s.redisClient.SetNX(ctx, key, "PENDING", 5*time.Minute).Result()
 	if err != nil {
 		log.Printf("[ERROR] Redis bağlantı hatası: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)

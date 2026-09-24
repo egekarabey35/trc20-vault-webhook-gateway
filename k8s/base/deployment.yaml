@@ -33,7 +33,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: gateway
-          image: trc20-gateway:v1.0.0
+          image: trc20-gateway@sha256:7b3a9c5c8f6a3b2b1d9e8f7a6c5b4d3e2f1a0c9b8d7e6f5a4b3c2d1e0f9a8b7c
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
