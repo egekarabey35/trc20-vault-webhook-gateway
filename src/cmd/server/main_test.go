@@ -35,7 +35,7 @@ func TestConcurrentWebhookIdempotency(t *testing.T) {
 	srv := NewGatewayServer(mr.Addr(), tmpFile.Name())
 	time.Sleep(50 * time.Millisecond)
 
-	payloadBytes := []byte(`{"tx_hash":"0xabc123","amount":100,"token":"USDT","to_address":"TRX123"}`)
+	payloadBytes := []byte(`{"tx_hash":"0xabc123","amount":100.00,"token":"USDT","to_address":"TRX123"}`)
 	mac := auth.ComputeHMAC(payloadBytes, secretKey)
 	signatureHex := hex.EncodeToString(mac)
 

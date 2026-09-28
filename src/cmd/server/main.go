@@ -19,11 +19,12 @@ import (
 )
 
 type WebhookPayload struct {
-	TxHash    string  `json:"tx_hash"`
-	Amount    float64 `json:"amount"`
-	Token     string  `json:"token"`
-	ToAddress string  `json:"to_address"`
-	Timestamp int64   `json:"timestamp"`
+	TxHash    string      `json:"tx_hash"`
+	// CRITICAL FIX: Financial systems must NEVER use float64. Using json.Number strictly preserves precision.
+	Amount    json.Number `json:"amount"`
+	Token     string      `json:"token"`
+	ToAddress string      `json:"to_address"`
+	Timestamp int64       `json:"timestamp"`
 }
 
 type GatewayServer struct {
@@ -40,13 +41,10 @@ func NewGatewayServer(redisAddr, secretPath string) *GatewayServer {
 		}),
 		secretPath: secretPath,
 	}
-
 	if err := srv.loadSecret(); err != nil {
 		log.Printf("[WARN] Vault Agent secret dosyası henüz hazır değil (%v), fallback/beklemede.", err)
 	}
-
 	go srv.watchSecretFile()
-
 	return srv
 }
 
@@ -59,7 +57,6 @@ func (s *GatewayServer) loadSecret() error {
 	if cleaned == "" {
 		return errors.New("secret file is empty")
 	}
-
 	s.secretMu.Lock()
 	s.vaultSecret = cleaned
 	s.secretMu.Unlock()
@@ -70,7 +67,6 @@ func (s *GatewayServer) loadSecret() error {
 func (s *GatewayServer) watchSecretFile() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-
 	for range ticker.C {
 		if err := s.loadSecret(); err != nil {
 			continue
@@ -92,17 +88,14 @@ func (s *GatewayServer) healthzHandler(w http.ResponseWriter, r *http.Request) {
 func (s *GatewayServer) readyzHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
-
 	if err := s.redisClient.Ping(ctx).Err(); err != nil {
 		http.Error(w, `{"status":"not_ready","reason":"redis_unreachable"}`, http.StatusServiceUnavailable)
 		return
 	}
-
 	if s.getSecret() == "" {
 		http.Error(w, `{"status":"not_ready","reason":"secret_not_loaded"}`, http.StatusServiceUnavailable)
 		return
 	}
-
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"ready"}`))
 }
@@ -112,7 +105,6 @@ func (s *GatewayServer) webhookHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
 	signature := r.Header.Get("X-TRC20-Signature")
@@ -150,16 +142,14 @@ func (s *GatewayServer) webhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-
+	
 	key := "tx:" + payload.TxHash
-
 	acquired, err := s.redisClient.SetNX(ctx, key, "PENDING", 5*time.Minute).Result()
 	if err != nil {
 		log.Printf("[ERROR] Redis bağlantı hatası: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-
 	if !acquired {
 		log.Printf("[SECURITY] Replay atağı veya mükerrer işlem engellendi! TxHash: %s", payload.TxHash)
 		http.Error(w, "Conflict: Transaction already processing or processed", http.StatusConflict)
@@ -169,15 +159,15 @@ func (s *GatewayServer) webhookHandler(w http.ResponseWriter, r *http.Request) {
 	err = processFintechTransfer(payload)
 	if err != nil {
 		log.Printf("[ERROR] Transfer işleme hatası: %v. Kilit serbest bırakılıyor.", err)
-		s.redisClient.Del(ctx, key)
+		// CRITICAL FIX: Use context.Background() for cleanup because original ctx might be deadline exceeded
+		s.redisClient.Del(context.Background(), key)
 		http.Error(w, "Payment Processing Failed", http.StatusBadGateway)
 		return
 	}
 
 	s.redisClient.Set(ctx, key, "PROCESSED", 24*time.Hour)
-
-	log.Printf("[ACCEPTED] Geçerli TRC-20 Transfer Tamamlandı: Hash=%s, Amount=%.2f %s, To=%s",
-		payload.TxHash, payload.Amount, payload.Token, payload.ToAddress)
+	log.Printf("[ACCEPTED] Geçerli TRC-20 Transfer Tamamlandı: Hash=%s, Amount=%s %s, To=%s",
+		payload.TxHash, payload.Amount.String(), payload.Token, payload.ToAddress)
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"accepted"}`))
@@ -192,14 +182,12 @@ func main() {
 	if redisAddr == "" {
 		redisAddr = "redis:6379"
 	}
-
 	secretPath := os.Getenv("VAULT_SECRET_FILE")
 	if secretPath == "" {
 		secretPath = "/vault/secrets/webhook-secret"
 	}
 
 	server := NewGatewayServer(redisAddr, secretPath)
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("/webhook/trc20", server.webhookHandler)
 	mux.HandleFunc("/healthz", server.healthzHandler)
@@ -230,13 +218,11 @@ func main() {
 
 	<-stopCtx.Done()
 	log.Println("[INFO] SIGTERM sinyali alındı. Graceful shutdown başlatılıyor...")
-
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
+	
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf("[ERROR] Graceful shutdown zorlandı: %v", err)
 	}
-
 	log.Println("[SUCCESS] Sunucu güvenli bir şekilde kapatıldı.")
 }
