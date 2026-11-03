@@ -52,6 +52,6 @@ The included [`docker-compose.yml`](docker-compose.yml) starts development Vault
 - **Redis expiration / crash recovery:** The PENDING lock expires after five minutes; interrupted transactions and late replays need durable reconciliation and stronger lifecycle guarantees.
 - **Partial input validation:** The current handler does not perform full semantic validation of hash, address, token, amount or timestamp. The `tx_hash` is trusted as supplied after signature verification.
 - **Deployment prerequisites:** Kubernetes manifests include a sample pinned image digest, Vault role and external Redis/Vault assumptions. These must be replaced/configured and tested in an actual cluster.
-- **Observability & review:** Add structured redacted logging, metrics, threat modeling, integration tests, CI and independent security review before any production use.
+- **Observability & review:** Add structured redacted logging, metrics, threat modeling, Kubernetes integration tests and independent security review before any production use. Go unit tests and vet now run in [GitHub Actions](.github/workflows/go-ci.yml).
 
 This project demonstrates layered webhook controls and explicit analysis of where those controls **are not yet sufficient** for production financial services.
