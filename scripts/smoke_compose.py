@@ -59,6 +59,13 @@ def main():
     status, _ = request("/webhook/trc20", payload, signature)
     assert status == 409, f"Replay was not rejected: {status}"
 
+    alternate = json.loads(payload)
+    alternate["tx_hash"] = "0x" + "A" * 64
+    alt_body = json.dumps(alternate, separators=(",", ":")).encode("utf-8")
+    alt_sig = hmac.new(KEY, alt_body, hashlib.sha256).hexdigest()
+    alt_status, _ = request("/webhook/trc20", alt_body, alt_sig)
+    assert alt_status == 409, alt_status
+
     invalid = json.dumps({
         "tx_hash": "invalid",
         "amount": "0",
