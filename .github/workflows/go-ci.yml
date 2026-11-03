@@ -24,3 +24,10 @@ jobs:
         run: go test -race ./...
       - name: Static vet
         run: go vet ./...
+      - name: Build container image
+        run: docker build -t trc20-gateway:ci .
+      - name: Validate local Compose definition
+        run: |
+          mkdir -p local-secrets
+          printf '%s\n' 'test-only-ci-secret' > local-secrets/webhook-secret
+          docker compose config --quiet
