@@ -153,7 +153,10 @@ func (s *GatewayServer) webhookHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 	
-	key := "tx:" + payload.TxHash
+	// Canonicalize equivalent on-chain transaction identifiers so case and
+	// optional 0x prefixes cannot bypass Redis duplicate suppression.
+	canonicalHash := strings.TrimPrefix(strings.ToLower(payload.TxHash), "0x")
+	key := "tx:" + canonicalHash
 	acquired, err := s.redisClient.SetNX(ctx, key, "PENDING", 5*time.Minute).Result()
 	if err != nil {
 		log.Printf("[ERROR] Redis bağlantı hatası: %v", err)
