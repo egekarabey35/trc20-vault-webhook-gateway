@@ -1,17 +1,17 @@
-# Derleme Aşaması
 FROM golang:1.22-alpine AS builder
-WORKDIR /app
-COPY go.mod ./
+WORKDIR /src
+
+# Download modules based on the committed lockfile before copying source.
+COPY go.mod go.sum ./
+RUN go mod download
+
 COPY src/ ./src/
-RUN go mod tidy
-RUN CGO_ENABLED=0 GOOS=linux go build -o gateway ./src/cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/gateway ./src/cmd/server
 
-# CRITICAL FIX: Minimal Distroless Çalışma Zamanı (Zero-Shell, Zero-OS vulnerabilities)
-FROM gcr.io/distroless/static-debian11:nonroot
+# Distroless non-root runtime: no shell or package manager.
+FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
-COPY --from=builder /app/gateway .
-
-# distroless:nonroot uses uid:gid 65532:65532
+COPY --from=builder /out/gateway /app/gateway
 USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/app/gateway"]
