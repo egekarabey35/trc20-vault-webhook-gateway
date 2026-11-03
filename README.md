@@ -43,7 +43,19 @@ go run ./src/cmd/server
 
 `GET /healthz` responds when the process is reachable; **`GET /readyz` only succeeds when Redis is reachable and a nonempty secret has been loaded**.
 
-The included [`docker-compose.yml`](docker-compose.yml) starts development Vault and Redis containers but does **not** provision the required Vault secret, Vault Agent injector or `VAULT_SECRET_FILE` mount for the gateway. Accordingly, `docker compose up` alone is **not a fully working end-to-end secret-injection demonstration**. The sample Compose file includes a hardcoded development-only Vault token and exposed ports; never deploy it to the internet or reuse those credentials.
+The included [`docker-compose.yml`](docker-compose.yml) uses a **local Docker Compose secret file** (not a Vault Agent). First create a disposable development-only key, ensure the non-root container can read it, then start the stack:
+
+```bash
+mkdir -p local-secrets
+openssl rand -hex 32 > local-secrets/webhook-secret
+# Demo only: adjust local file ownership/permissions so container UID 65532 can read it.
+# On a standard Linux Docker installation:
+sudo chown 65532:65532 local-secrets/webhook-secret
+sudo chmod 0400 local-secrets/webhook-secret
+docker compose up --build
+```
+
+The `local-secrets/` directory is ignored by Git. Gateway and Redis ports bind to `127.0.0.1`, not every network interface. An optional `vault-dev` Compose profile runs a disposable Vault development server but does **not** automatically inject secrets into the gateway; the Kubernetes manifests demonstrate the separate Vault Agent integration. This is a lab setup, not a production deployment.
 
 ## Known limitations and future work
 
