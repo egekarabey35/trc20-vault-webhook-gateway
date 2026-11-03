@@ -31,3 +31,12 @@ jobs:
           mkdir -p local-secrets
           printf '%s\n' 'test-only-ci-secret' > local-secrets/webhook-secret
           docker compose config --quiet
+      - name: Integration smoke test with Docker Compose and Redis
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Only a disposable CI test key; never reuse it.
+          chmod 0444 local-secrets/webhook-secret
+          docker compose up -d --build
+          trap 'docker compose logs --no-color --tail=100; docker compose down --volumes --remove-orphans' EXIT
+          python3 scripts/smoke_compose.py
