@@ -63,7 +63,7 @@ The `local-secrets/` directory is ignored by Git. Gateway and Redis ports bind t
 - **No settlement implementation:** `processFintechTransfer` is a no-op placeholder; a real application would need an idempotent ledger integration.
 - **Redis expiration / crash recovery:** The PENDING lock expires after five minutes; interrupted transactions and late replays need durable reconciliation and stronger lifecycle guarantees.
 - **Partial input validation:** The current handler does not perform full semantic validation of hash, address, token, amount or timestamp. The `tx_hash` is trusted as supplied after signature verification.
-- **Deployment prerequisites:** Kubernetes manifests include a sample pinned image digest, Vault role and external Redis/Vault assumptions. These must be replaced/configured and tested in an actual cluster.
+- **Deployment prerequisites:** Kubernetes manifests use an explicitly local `trc20-gateway:local` image, not a published immutable digest. Build and load it into a Kind cluster (`docker build -t trc20-gateway:local .` and `kind load docker-image trc20-gateway:local --name <your-cluster>`), or publish and replace it with a real verified digest. Configure the Vault role and external Redis/Vault endpoints; these are not automatically provisioned by the manifests.
 - **Observability & review:** Add structured redacted logging, metrics, threat modeling, Kubernetes integration tests and independent security review before any production use. Go unit tests and vet now run in [GitHub Actions](.github/workflows/go-ci.yml).
 
 This project demonstrates layered webhook controls and explicit analysis of where those controls **are not yet sufficient** for production financial services.
