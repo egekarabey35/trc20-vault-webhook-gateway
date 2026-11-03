@@ -116,7 +116,12 @@ func (s *GatewayServer) webhookHandler(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "Bad Request or Payload Too Large", http.StatusBadRequest)
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "Payload Too Large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
@@ -139,8 +144,13 @@ func (s *GatewayServer) webhookHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JSON Payload", http.StatusBadRequest)
 		return
 	}
+	if err := validatePayload(payload, time.Now()); err != nil {
+		log.Printf("[REJECTED] Invalid signed webhook fields: %v", err)
+		http.Error(w, "Invalid Transaction Fields", http.StatusBadRequest)
+		return
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 	
 	key := "tx:" + payload.TxHash
@@ -160,17 +170,24 @@ func (s *GatewayServer) webhookHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("[ERROR] Transfer işleme hatası: %v. Kilit serbest bırakılıyor.", err)
 		// CRITICAL FIX: Use context.Background() for cleanup because original ctx might be deadline exceeded
-		s.redisClient.Del(context.Background(), key)
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cleanupCancel()
+		if cleanupErr := s.redisClient.Del(cleanupCtx, key).Err(); cleanupErr != nil {
+			log.Printf("[WARN] Failed to release pending transaction key: %v", cleanupErr)
+		}
 		http.Error(w, "Payment Processing Failed", http.StatusBadGateway)
 		return
 	}
 
-	s.redisClient.Set(ctx, key, "PROCESSED", 24*time.Hour)
-	log.Printf("[ACCEPTED] Geçerli TRC-20 Transfer Tamamlandı: Hash=%s, Amount=%s %s, To=%s",
-		payload.TxHash, payload.Amount.String(), payload.Token, payload.ToAddress)
+	if err := s.redisClient.Set(ctx, key, "PROCESSED", 24*time.Hour).Err(); err != nil {
+		log.Printf("[ERROR] Redis could not commit demo replay marker: %v", err)
+		http.Error(w, "Replay State Unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	log.Printf("[VALIDATED_DEMO] Signed webhook validated and deduplicated: Hash=%s", payload.TxHash)
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"accepted"}`))
+	w.Write([]byte(`{"status":"validated_demo"}`))
 }
 
 func processFintechTransfer(p WebhookPayload) error {
@@ -201,9 +218,10 @@ func main() {
 	httpServer := &http.Server{
 		Addr:         ":" + port,
 		Handler:      mux,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  15 * time.Second,
+		ReadTimeout:       5 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       15 * time.Second,
 	}
 
 	stopCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
