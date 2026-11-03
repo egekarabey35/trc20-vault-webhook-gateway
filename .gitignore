@@ -1,0 +1,10 @@
+# Local development secrets and environment configuration
+local-secrets/
+.env
+.env.*
+!.env.example
+
+# Local builds and reports
+gateway
+*.test
+coverage.out
