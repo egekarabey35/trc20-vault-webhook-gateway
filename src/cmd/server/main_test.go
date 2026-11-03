@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/hex"
+	"fmt"
+	"strings"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -35,7 +37,7 @@ func TestConcurrentWebhookIdempotency(t *testing.T) {
 	srv := NewGatewayServer(mr.Addr(), tmpFile.Name())
 	time.Sleep(50 * time.Millisecond)
 
-	payloadBytes := []byte(`{"tx_hash":"0xabc123","amount":100.00,"token":"USDT","to_address":"TRX123"}`)
+	payloadBytes := []byte(fmt.Sprintf(`{"tx_hash":"%s","amount":100.00,"token":"USDT","to_address":"%s","timestamp":%d}`, strings.Repeat("a", 64), "T"+strings.Repeat("A", 33), time.Now().Unix()))
 	mac := auth.ComputeHMAC(payloadBytes, secretKey)
 	signatureHex := hex.EncodeToString(mac)
 
