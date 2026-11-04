@@ -1,0 +1,51 @@
+name: Kubernetes NetworkPolicy API validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  network-policies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Create disposable Kubernetes API server
+        uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
+        with:
+          cluster_name: gateway-policy-ci
+          wait: 120s
+      - name: Validate and apply gateway network policies
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl apply -f k8s/base/namespace-sa.yaml
+          kubectl apply -f k8s/base/networkpolicy.yaml
+          kubectl apply -f k8s/base/quarantine-networkpolicy.yaml
+          kubectl apply --dry-run=server -f k8s/base/deployment.yaml
+          kubectl get networkpolicy -n fintech-gateway -o wide
+      - name: Assert quarantine label disables normal access policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl get networkpolicy trc20-gateway-netpol -n fintech-gateway -o json > /tmp/gateway-allow.json
+          kubectl get networkpolicy isolate-quarantined-pods -n fintech-gateway -o json > /tmp/gateway-deny.json
+          python3 - <<'PY'
+          import json
+          allow = json.load(open("/tmp/gateway-allow.json"))
+          deny = json.load(open("/tmp/gateway-deny.json"))
+          exprs = allow["spec"]["podSelector"].get("matchExpressions", [])
+          assert any(x["key"] == "security.quarantine" and x["operator"] == "NotIn" and "true" in x.get("values", []) for x in exprs), exprs
+          assert deny["spec"]["podSelector"]["matchLabels"]["security.quarantine"] == "true"
+          assert set(deny["spec"]["policyTypes"]) == {"Ingress", "Egress"}
+          assert deny["spec"].get("ingress", []) == [] and deny["spec"].get("egress", []) == []
+          print("PASS: selectors validated against Kubernetes API")
+          PY
+
+      # Actual packet isolation still requires a NetworkPolicy-enforcing CNI.
