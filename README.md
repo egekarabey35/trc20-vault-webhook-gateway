@@ -57,6 +57,12 @@ docker compose up --build
 
 The `local-secrets/` directory is ignored by Git. Gateway and Redis ports bind to `127.0.0.1`, not every network interface. An optional `vault-dev` Compose profile runs a disposable Vault development server but does **not** automatically inject secrets into the gateway; the Kubernetes manifests demonstrate the separate Vault Agent integration. This is a lab setup, not a production deployment.
 
+## Kubernetes quarantine policy interaction
+
+When deployed with the [Falco remediation worker](https://github.com/egekarabey35/falco-runtime-security), both [the gateway allow policy](k8s/base/networkpolicy.yaml) and [the quarantine deny-all policy](k8s/base/quarantine-networkpolicy.yaml) must be applied. Kubernetes NetworkPolicy rules are **additive**: a deny-all policy cannot cancel an existing allow. Therefore the gateway allow-policy selector includes `security.quarantine NotIn ["true"]`. Once the worker adds `security.quarantine=true`, the normal allow policy stops selecting that pod while the quarantine deny-all policy selects it.
+
+The [Kubernetes API policy-validation workflow](.github/workflows/k8s-policies.yml) checks these selectors against a disposable cluster. **Packet-level isolation** still requires a NetworkPolicy-enforcing CNI and assurance that no other allow policies select quarantined pods.
+
 ## Known limitations and future work
 
 - **No on-chain verification:** The gateway accepts signed notifications but does not independently query a TRON node to verify finality, token contract or receiver.
