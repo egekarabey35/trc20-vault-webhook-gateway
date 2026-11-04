@@ -4,9 +4,16 @@ metadata:
   name: trc20-gateway-netpol
   namespace: fintech-gateway
 spec:
+  # Kubernetes NetworkPolicy allows are additive, not overrideable.
+  # Drop gateway access policies when Falco applies the quarantine label,
+  # leaving only the matching deny-all quarantine policy.
   podSelector:
     matchLabels:
       app: trc20-gateway
+    matchExpressions:
+      - key: security.quarantine
+        operator: NotIn
+        values: ["true"]
   policyTypes:
     - Ingress
     - Egress
@@ -38,7 +45,9 @@ spec:
           port: 6379
     # 3. Kube-DNS / CoreDNS erişimi (Port 53)
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
